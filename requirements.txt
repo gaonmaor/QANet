@@ -1,0 +1,6 @@
+bottle
+ujson
+tensorflow-gpu
+numpy
+tqdm
+spacy==2.0.9
