@@ -1,4 +1,17 @@
-# QANet
+# QANet - BGU branch
+This is a final project at the course:
+https://www.cs.bgu.ac.il/~elhadad/nlp18.html
+It was branched from:
+https://github.com/NLPLearn/QANet
+
+The purpose of this project is:
+1. To better document and format the original code.
+2. To simplify and improve the original code.
+3. Adding permutation for better predictions.
+4. Adding ensemble.
+
+# The Original readme:
+
 A Tensorflow implementation of Google's [QANet](https://openreview.net/pdf?id=B14TlG-RW) (previously Fast Reading Comprehension (FRC)) from [ICLR2018](https://openreview.net/forum?id=B14TlG-RW).
 
 I wrote a blog post about implementing QANet. Check out [here](https://medium.com/@minsangkim/implementing-question-answering-networks-with-cnns-5ae5f08e312b) for more information!
