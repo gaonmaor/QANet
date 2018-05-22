@@ -77,7 +77,7 @@ def layer_norm_compute_python(x, epsilon, scale, bias):
     mean = tf.reduce_mean(x, axis=[-1], keepdims=True)
     variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keepdims=True)
     # TODO: Shoudn't it be divided by the STD?! - Changed to div, need to be tested.
-    norm_x = (x - mean) / tf.rsqrt(variance + epsilon)
+    norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
     return norm_x * scale + bias
 
 
@@ -108,6 +108,20 @@ norm_fn = layer_norm  # tf.contrib.layers.layer_norm #tf.contrib.layers.layer_no
 
 def highway(x, size=None, activation=None,
             num_layers=2, scope="highway", dropout=0.0, reuse=None):
+    """
+    Highway layer
+    :param x:  The input.
+    :param size: Each convolve output dimension, if not specified the
+                   default is the last shape of the input.
+    :param activation: If specified this activation function would be applied on the
+                         output of the last convolution of each layer.
+    :param num_layers: The number of layers in this highway residual network.
+    :param scope: The name for this scope.
+    :param dropout: The dropout ratio.
+    :param reuse: Indicate if weight should be reused.
+    :return: The residual output.
+    """
+
     with tf.variable_scope(scope, reuse):
         if size is None:
             size = x.shape.as_list()[-1]
@@ -124,6 +138,14 @@ def highway(x, size=None, activation=None,
 
 
 def layer_dropout(inputs, residual, dropout):
+    """
+    Perform horizontal and vertical dropout.
+    :param inputs: The output from last layer candidate to be skipped -
+                     If not skipped this is an input to regular dropout layer.
+    :param residual: The residual input to be passed to the next layer.
+    :param dropout: Dropout ratio.
+    :return:
+    """
     pred = tf.random_uniform([]) < dropout
     return tf.cond(pred, lambda: residual, lambda: tf.nn.dropout(inputs, 1.0 - dropout) + residual)
 
@@ -159,7 +181,7 @@ def conv_block(inputs, num_conv_layers, kernel_size, num_filters,
         for i in range(num_conv_layers):
             residual = outputs
             outputs = norm_fn(outputs, scope="layer_norm_%d" % i, reuse=reuse)
-            if (i) % 2 == 0:
+            if i % 2 == 0:
                 outputs = tf.nn.dropout(outputs, 1.0 - dropout)
             outputs = depthwise_separable_convolution(outputs,
                                                       kernel_size=(kernel_size, 1), num_filters=num_filters,
@@ -226,6 +248,18 @@ def multihead_attention(queries, units, num_heads,
 
 def conv(inputs, output_size, bias=None, activation=None,
          kernel_size=1, name="conv", reuse=None):
+    """
+    Convolution API wrapper.
+    :param inputs: The input to convolve.
+    :param output_size: The output size after the convolution.
+    :param bias: If True add bias to the output.
+    :param activation: If specified apply this function on the output.
+    :param kernel_size: The size of the kernel
+    :param name: The name for this convolution block.
+    :param reuse: Reuse weights.
+    :return: The output tensor.
+    """
+
     with tf.variable_scope(name, reuse=reuse):
         shapes = inputs.shape.as_list()
         if len(shapes) > 4:
