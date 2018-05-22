@@ -5,15 +5,16 @@ import tensorflow as tf
 import numpy as np
 import math
 
-from tensorflow.contrib.rnn import MultiRNNCell
-from tensorflow.contrib.rnn import RNNCell
+# from tensorflow.contrib.rnn import MultiRNNCell
+# from tensorflow.contrib.rnn import RNNCell
 
 from tensorflow.python.util import nest
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import clip_ops
+
+# from tensorflow.python.ops import init_ops
+# from tensorflow.python.ops import clip_ops
 
 from functools import reduce
 from operator import mul
@@ -26,6 +27,7 @@ https://github.com/allenai/bi-att-flow
 '''
 
 
+# TODO: Currently not in use.
 def initializer():
     return tf.contrib.layers.variance_scaling_initializer(factor=1.0,
                                                           mode='FAN_AVG',
@@ -33,6 +35,7 @@ def initializer():
                                                           dtype=tf.float32)
 
 
+# TODO: Currently not in use.
 def initializer_relu():
     return tf.contrib.layers.variance_scaling_initializer(factor=2.0,
                                                           mode='FAN_IN',
@@ -40,15 +43,20 @@ def initializer_relu():
                                                           dtype=tf.float32)
 
 
+"""
+The used loss for the final loss of the model.
+"""
 regularizer = tf.contrib.layers.l2_regularizer(scale=3e-7)
 
 
+# TODO: Currently not in use.
 def glu(x):
     """Gated Linear Units from https://arxiv.org/pdf/1612.08083.pdf"""
     x, x_h = tf.split(x, 2, axis=-1)
     return tf.sigmoid(x) * x_h
 
 
+# TODO: Currently not in use.
 def noam_norm(x, epsilon=1.0, scope=None, reuse=None):
     """One version of layer normalization."""
     with tf.name_scope(scope, default_name="noam_norm", values=[x]):
@@ -58,15 +66,32 @@ def noam_norm(x, epsilon=1.0, scope=None, reuse=None):
 
 
 def layer_norm_compute_python(x, epsilon, scale, bias):
-    """Layer norm raw computation."""
-    mean = tf.reduce_mean(x, axis=[-1], keep_dims=True)
-    variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keep_dims=True)
-    norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
+    """
+    Computes normalization for x.
+    :param x: The unorganized x.
+    :param epsilon: A noise added to prevent zero decision.
+    :param scale: The scaling for the new tensor.
+    :param bias: The bias for the new tensor.
+    :return: The normalized rescaled tensor.
+    """
+    mean = tf.reduce_mean(x, axis=[-1], keepdims=True)
+    variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keepdims=True)
+    # TODO: Shoudn't it be divided by the STD?! - Changed to div, need to be tested.
+    norm_x = (x - mean) / tf.rsqrt(variance + epsilon)
     return norm_x * scale + bias
 
 
 def layer_norm(x, filters=None, epsilon=1e-6, scope=None, reuse=None):
-    """Layer normalize the tensor x, averaging over the last dimension."""
+    """
+    Layer normalize the tensor x, averaging over the last dimension.
+    :param x:
+    :param filters:
+    :param epsilon:
+    :param scope:
+    :param reuse:
+    :return:
+    """
+
     if filters is None:
         filters = x.get_shape()[-1]
     with tf.variable_scope(scope, default_name="layer_norm", values=[x], reuse=reuse):
@@ -199,7 +224,8 @@ def multihead_attention(queries, units, num_heads,
         return combine_last_two_dimensions(tf.transpose(x, [0, 2, 1, 3]))
 
 
-def conv(inputs, output_size, bias=None, activation=None, kernel_size=1, name="conv", reuse=None):
+def conv(inputs, output_size, bias=None, activation=None,
+         kernel_size=1, name="conv", reuse=None):
     with tf.variable_scope(name, reuse=reuse):
         shapes = inputs.shape.as_list()
         if len(shapes) > 4:
@@ -396,6 +422,7 @@ def get_timing_signal_1d(length, channels, min_timescale=1.0, max_timescale=1.0e
     return signal
 
 
+# noinspection PyUnresolvedReferences
 def ndim(x):
     """Copied from keras==2.0.6
     Returns the number of axes in a tensor, as an integer.
@@ -418,6 +445,7 @@ def ndim(x):
         2
     ```
     """
+
     dims = x.get_shape()._dims
     if dims is not None:
         return len(dims)
@@ -569,44 +597,21 @@ def optimized_trilinear_for_attention(args, c_maxlen, q_maxlen, input_keep_prob=
         return res
 
 
-def trilinear(args,
-              output_size=1,
-              bias=True,
-              squeeze=False,
-              wd=0.0,
-              input_keep_prob=1.0,
-              scope="trilinear"):
-    with tf.variable_scope(scope):
-        flat_args = [flatten(arg, 1) for arg in args]
-        flat_args = [tf.nn.dropout(arg, input_keep_prob) for arg in flat_args]
-        flat_out = _linear(flat_args, output_size, bias, scope=scope)
-        out = reconstruct(flat_out, args[0], 1)
-        return tf.squeeze(out, -1)
+def total_params():
+    """
+    Calculates and print the number of trainable parameters.
+    """
+    total_parameters = 0
+    for variable in tf.trainable_variables():
+        shape = variable.get_shape()
+        variable_parametes = 1
+        for dim in shape:
+            variable_parametes *= dim.value
+        total_parameters += variable_parametes
+    print("Total number of trainable parameters: {}".format(total_parameters))
 
 
-def flatten(tensor, keep):
-    fixed_shape = tensor.get_shape().as_list()
-    start = len(fixed_shape) - keep
-    left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
-    out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
-    flat = tf.reshape(tensor, out_shape)
-    return flat
-
-
-def reconstruct(tensor, ref, keep):
-    ref_shape = ref.get_shape().as_list()
-    tensor_shape = tensor.get_shape().as_list()
-    ref_stop = len(ref_shape) - keep
-    tensor_start = len(tensor_shape) - keep
-    pre_shape = [ref_shape[i] or tf.shape(ref)[i] for i in range(ref_stop)]
-    keep_shape = [tensor_shape[i] or tf.shape(tensor)[i] for i in range(tensor_start, len(tensor_shape))]
-    # pre_shape = [tf.shape(ref)[i] for i in range(len(ref.get_shape().as_list()[:-keep]))]
-    # keep_shape = tensor.get_shape().as_list()[-keep:]
-    target_shape = pre_shape + keep_shape
-    out = tf.reshape(tensor, target_shape)
-    return out
-
-
+# TODO: Currently not in use.
 def _linear(args,
             output_size,
             bias,
@@ -669,15 +674,65 @@ def _linear(args,
         return nn_ops.bias_add(res, biases)
 
 
-def total_params():
+# TODO: Currently not in use.
+def reconstruct(tensor, ref, keep):
     """
-    Calculates and print the number of trainable parameters.
+    Reconstruct a tensor to comply with ref tensor shape.
+    :param tensor: The tensor to reconstruct.
+    :param ref: A tensor as reference to reconstruct the shape.
+    :param keep:
+    :return: The reconstructed tensor.
     """
-    total_parameters = 0
-    for variable in tf.trainable_variables():
-        shape = variable.get_shape()
-        variable_parametes = 1
-        for dim in shape:
-            variable_parametes *= dim.value
-        total_parameters += variable_parametes
-    print("Total number of trainable parameters: {}".format(total_parameters))
+
+    ref_shape = ref.get_shape().as_list()
+    tensor_shape = tensor.get_shape().as_list()
+    ref_stop = len(ref_shape) - keep
+    tensor_start = len(tensor_shape) - keep
+    pre_shape = [ref_shape[i] or tf.shape(ref)[i] for i in range(ref_stop)]
+    keep_shape = [tensor_shape[i] or tf.shape(tensor)[i] for i in range(tensor_start, len(tensor_shape))]
+    # pre_shape = [tf.shape(ref)[i] for i in range(len(ref.get_shape().as_list()[:-keep]))]
+    # keep_shape = tensor.get_shape().as_list()[-keep:]
+    target_shape = pre_shape + keep_shape
+    out = tf.reshape(tensor, target_shape)
+    return out
+
+
+# TODO: Currently not in use.
+# noinspection PyUnusedLocal
+def trilinear(args, output_size=1, bias=True, squeeze=False, wd=0.0,
+              input_keep_prob=1.0, scope="trilinear"):
+    """
+    :param args: A collection of arguments as input tensors.
+    :param output_size: The output dimension.
+    :param bias: Use bias or not.
+    :param squeeze: Not Used.
+    :param wd: NOT Used.
+    :param input_keep_prob: Dropout ratio.
+    :param scope: The variable scope name.
+    :return: Return the squeezed output.
+    """
+
+    with tf.variable_scope(scope):
+        flat_args = [flatten(arg, 1) for arg in args]
+        flat_args = [tf.nn.dropout(arg, input_keep_prob) for arg in flat_args]
+        flat_out = _linear(flat_args, output_size, bias, scope=scope)
+        out = reconstruct(flat_out, args[0], 1)
+        return tf.squeeze(out, -1)
+
+
+# TODO: Currently not in use.
+def flatten(tensor, keep):
+    """
+    Flatten the first dimensions of a tensor leaving only the
+      last [keep] dimensions.
+    :param tensor: The tensor to flatten.
+    :param keep: The number of dimensions to retain.
+    :return: The flatten tensor.
+    """
+
+    fixed_shape = tensor.get_shape().as_list()
+    start = len(fixed_shape) - keep
+    left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
+    out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
+    flat = tf.reshape(tensor, out_shape)
+    return flat
